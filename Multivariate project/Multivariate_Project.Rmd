@@ -1,0 +1,190 @@
+---
+title: "Project"
+output: word_document
+date: "2024-05-01"
+---
+
+```{r}
+
+# Load required libraries
+library(MASS)
+library(ggplot2)
+library(MuMIn)
+
+# Read data from CSV
+data <- read.csv("/Users/yashds/Downloads/Multivariate Project/Air_pollution.csv")
+
+# a) Principal Component Analysis (PCA) using princomp
+pca_result <- princomp(data[, -1], cor = TRUE) 
+variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+
+# Convert to percentages
+percent_variance_explained <- variance_explained * 100
+
+# Print the percentages
+print(percent_variance_explained)
+
+# Scree plot
+ggplot(data.frame(PC = 1:length(variance_explained), Variance = variance_explained), 
+       aes(x = PC, y = Variance)) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Principal Component", y = "Proportion of Variance Explained") +
+  ggtitle("Scree Plot")
+
+cumulative_variance <- cumsum(variance_explained)
+
+# Explaining at least 70% of the variability in the data.
+num_components <- min(which(cumulative_variance >= 0.7))
+pca_result$loadings[, 1:num_components]
+
+# b) Correlation with First Principal Component
+cor(data$X1, pca_result$scores[, 1])
+cor(data$X2, pca_result$scores[, 1])
+
+# c)
+# MMLR model
+model <- lm(cbind(X1, X2) ~ X3 + X4 + X5 + X6 + X7, data = data)
+
+# Fitted values and residuals
+Y_hat <- fitted(model)
+epsilon_hat <- resid(model)
+
+data_matrix <- as.matrix(data[, 2:3])
+t(Y_hat) %*% Y_hat
+t(epsilon_hat) %*% epsilon_hat
+t(data_matrix) %*% data_matrix
+t(Y_hat) %*% Y_hat + t(epsilon_hat) %*% epsilon_hat
+
+# Extract the diagonal elements (sums of squares)
+total_ss <- diag(t(data_matrix) %*% data_matrix)
+fitted_ss <- diag(t(Y_hat) %*% Y_hat)
+residual_ss <- diag(t(epsilon_hat) %*% epsilon_hat)
+
+# Variable names
+var_names <- colnames(data_matrix)
+
+# Create bar chart data
+bar_data <- data.frame(
+  Variable = rep(var_names, 3),
+  Component = rep(c("Total SS", "Fitted SS", "Residual SS"), each = 2),
+  Value = c(total_ss, fitted_ss, residual_ss)
+)
+
+
+ggplot(bar_data, aes(x = Variable, y = Value, fill = Component)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Decomposition of Sum of Squares", x = "Variable", y = "Sum of Squares") +
+  theme_bw()
+
+# Calculate proportions
+explained_prop <- fitted_ss / total_ss
+unexplained_prop <- residual_ss / total_ss
+
+# Combine into a data frame for easier viewing
+prop_df <- data.frame(
+  Variable = var_names,
+  Explained = explained_prop,
+  Unexplained = unexplained_prop
+)
+print(prop_df)
+
+# d)
+# Least square estimates
+beta_hat <- coef(model)
+beta_hat
+
+# Covariance matrix
+Sigma_hat <- vcov(model)
+Sigma_hat
+
+
+# (e)
+n <- nrow(data)
+r <- 5
+m <- 2
+
+sig_h<- (t(epsilon_hat)%*% epsilon_hat)/(n)
+
+aic_fullmodel<- n*log(det(sig_h)) - 2*(5+1)*m
+
+bic_fullmodel<- n*log(det(sig_h))- (5+1)*m*log(n)
+
+
+
+model_X1 <- lm(X1 ~ X3 + X4 + X5 + X6 + X7, data = data)
+model_X2 <- lm(X2 ~ X3 + X4 + X5 + X6 + X7, data = data)
+
+
+reduced_model_X1 <- stepAIC(model_X1, direction = "backward")
+reduced_model_X2 <- stepAIC(model_X2, direction = "backward")
+
+summary(reduced_model_X1)
+summary(reduced_model_X2)
+
+reduced_model_X1_new <- lm(X1 ~ X3 + X4, data = data)
+reduced_model_X2_new <- lm(X2 ~ X5 + X6 + X7, data = data)
+
+summary(reduced_model_X1_new)
+
+summary(reduced_model_X2_new)
+
+# (f)
+ft1<- lm(X1 ~ X3 + X4, data = data)
+
+par(mfrow = c(2, 2))
+qqnorm(ft1$residuals)
+qqline(ft1$residuals, col="red")
+
+plot(data[c(3, 4), c("X3", "X4")], ft1$residuals)
+abline(h=0, col="red")
+
+plot(ft1$fitted.values, ft1$residuals)
+abline(h=0, col="red")
+
+plot(hatvalues(ft1), cooks.distance(ft1))
+abline(v= 2*1/n, col="red")
+abline(h= 4/n,col="red")
+
+outliers_ft1 <- which(hatvalues(ft1) > 2*1/n & cooks.distance(ft1) > 4/n)
+outliers_ft1
+# Label outliers on the plot
+text(hatvalues(ft1)[outliers_ft1], cooks.distance(ft1)[outliers_ft1], labels = rownames(data)[outliers_ft1], pos = 3)
+
+ft2<- lm(X2 ~ X5 + X6 + X7, data = data)
+par(mfrow = c(2, 2))
+
+qqnorm(ft2$residuals)
+qqline(ft2$residuals, col="red")
+
+plot(data[c(5, 6, 7), c("X5", "X6", "X7")], ft2$residuals)
+abline(h=0, col="red")
+
+plot(ft2$fitted.values, ft2$residuals)
+abline(h=0, col="red")
+
+plot(hatvalues(ft2), cooks.distance(ft2))
+abline(v= 2*1/n, col="red")
+abline(h= 4/n,col="red")
+
+
+outliers_ft2 <- which(hatvalues(ft2) > 2*1/n & cooks.distance(ft2) > 4/n)
+outliers_ft2
+# Label outliers on the plot
+text(hatvalues(ft2)[outliers_ft2], cooks.distance(ft2)[outliers_ft2], labels = rownames(data)[outliers_ft2], pos = 3)
+
+# (g)
+# New data point
+new_data_X1 <- data.frame(X3 = 600, X4 = 850)
+
+# Predict with confidence intervals
+predict(ft1, newdata = new_data_X1, interval = "confidence", level = 0.95)
+
+
+new_data_X2 <- data.frame(X5 = 11, X6 = 32, X7 = 140)
+
+# Predict with confidence intervals
+predict(ft2, newdata = new_data_X2, interval = "confidence", level = 0.95)
+
+```
+

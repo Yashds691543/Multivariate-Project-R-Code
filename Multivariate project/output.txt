@@ -1,0 +1,384 @@
+> # Load required libraries
+> library(MASS)
+> library(ggplot2)
+> library(MuMIn)
+> 
+> # Read data from CSV
+> data <- read.csv("C:/Users/tejab/Downloads/Air_pollution.csv")
+> 
+> # a) Principal Component Analysis (PCA) using princomp
+> pca_result <- princomp(data[, -1], cor = TRUE) 
+> variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+> 
+> # Convert to percentages
+> percent_variance_explained <- variance_explained * 100
+> 
+> # Print the percentages
+> print(percent_variance_explained)
+    Comp.1     Comp.2     Comp.3     Comp.4     Comp.5     Comp.6     Comp.7 
+38.9731383 21.6047836 19.9281856 12.7427327  4.9539809  1.4326799  0.3644989 
+> 
+> # Scree plot
+> ggplot(data.frame(PC = 1:length(variance_explained), Variance = variance_explained), 
++        aes(x = PC, y = Variance)) +
++   geom_point() +
++   geom_line() +
++   labs(x = "Principal Component", y = "Proportion of Variance Explained") +
++   ggtitle("Scree Plot")
+> 
+> cumulative_variance <- cumsum(variance_explained)
+> 
+> # Explaining at least 70% of the variability in the data.
+> num_components <- min(which(cumulative_variance >= 0.7))
+> pca_result$loadings[, 1:num_components]
+          Comp.1      Comp.2     Comp.3
+X1  0.4896988171  0.08457563  0.0143502
+X2 -0.3153706901 -0.08863789  0.6771362
+X3  0.5411687028 -0.22588109  0.2671591
+X4  0.4875881115 -0.28200380  0.3448380
+X5  0.2498749284  0.05547149 -0.3112655
+X6  0.0001873122  0.62587937  0.4920363
+X7  0.2601790729  0.67796741 -0.1095789
+> 
+> # b) Correlation with First Principal Component
+> cor(data$X1, pca_result$scores[, 1])
+[1] 0.8088365
+> cor(data$X2, pca_result$scores[, 1])
+[1] -0.5208984
+> 
+> # c)
+> # MMLR model
+> model <- lm(cbind(X1, X2) ~ X3 + X4 + X5 + X6 + X7, data = data)
+> 
+> # Fitted values and residuals
+> Y_hat <- fitted(model)
+> epsilon_hat <- resid(model)
+> 
+> data_matrix <- as.matrix(data[, 2:3])
+> t(Y_hat) %*% Y_hat
+         X1       X2
+X1 50882.23  66462.0
+X2 66462.00 129026.3
+> t(epsilon_hat) %*% epsilon_hat
+          X1        X2
+X1 8175.7725 -703.9018
+X2 -703.9018  555.1534
+> t(data_matrix) %*% data_matrix
+        X1       X2
+X1 59058.0  65758.1
+X2 65758.1 129581.5
+> t(Y_hat) %*% Y_hat + t(epsilon_hat) %*% epsilon_hat
+        X1       X2
+X1 59058.0  65758.1
+X2 65758.1 129581.5
+> 
+> # Extract the diagonal elements (sums of squares)
+> total_ss <- diag(t(data_matrix) %*% data_matrix)
+> fitted_ss <- diag(t(Y_hat) %*% Y_hat)
+> residual_ss <- diag(t(epsilon_hat) %*% epsilon_hat)
+> 
+> # Variable names
+> var_names <- colnames(data_matrix)
+> 
+> # Create bar chart data
+> bar_data <- data.frame(
++   Variable = rep(var_names, 3),
++   Component = rep(c("Total SS", "Fitted SS", "Residual SS"), each = 2),
++   Value = c(total_ss, fitted_ss, residual_ss)
++ )
+> 
+> 
+> ggplot(bar_data, aes(x = Variable, y = Value, fill = Component)) +
++   geom_bar(stat = "identity", position = "dodge") +
++   labs(title = "Decomposition of Sum of Squares", x = "Variable", y = "Sum of Squares") +
++   theme_bw()
+> 
+> # Calculate proportions
+> explained_prop <- fitted_ss / total_ss
+> unexplained_prop <- residual_ss / total_ss
+> 
+> # Combine into a data frame for easier viewing
+> prop_df <- data.frame(
++   Variable = var_names,
++   Explained = explained_prop,
++   Unexplained = unexplained_prop
++ )
+> print(prop_df)
+   Variable Explained Unexplained
+X1       X1 0.8615637 0.138436325
+X2       X2 0.9957158 0.004284203
+> 
+> # d)
+> # Least square estimates
+> beta_hat <- coef(model)
+> beta_hat
+                     X1           X2
+(Intercept) 22.76047136 70.167304998
+X3           0.07477395 -0.007773061
+X4          -0.04892258  0.007607478
+X5          -1.83205789 -1.064172388
+X6          -0.05478818  0.447297702
+X7           0.19096795 -0.191663586
+> 
+> # Covariance matrix
+> Sigma_hat <- vcov(model)
+> Sigma_hat
+               X1:(Intercept)         X1:X3         X1:X4         X1:X5         X1:X6
+X1:(Intercept)  369.909354586  8.173456e-02 -7.174453e-02 -2.643700e+01 -7.667949e-01
+X1:X3             0.081734555  2.450213e-04 -2.252685e-04 -1.530440e-03  8.076669e-04
+X1:X4            -0.071744525 -2.252685e-04  2.253655e-04 -1.316400e-04 -7.099488e-04
+X1:X5           -26.436997590 -1.530440e-03 -1.316400e-04  3.115817e+00  3.744518e-02
+X1:X6            -0.766794894  8.076669e-04 -7.099488e-04  3.744518e-02  5.930999e-02
+X1:X7            -0.707060201 -6.439417e-04  5.816686e-04 -3.139916e-02 -1.500891e-02
+X2:(Intercept)  -31.847739840 -7.037024e-03  6.176921e-03  2.276121e+00  6.601802e-02
+X2:X3            -0.007037024 -2.109537e-05  1.939473e-05  1.317649e-04 -6.953695e-05
+X2:X4             0.006176921  1.939473e-05 -1.940308e-05  1.133368e-05  6.112379e-05
+X2:X5             2.276121463  1.317649e-04  1.133368e-05 -2.682596e-01 -3.223883e-03
+X2:X6             0.066018023 -6.953695e-05  6.112379e-05 -3.223883e-03 -5.106357e-03
+X2:X7             0.060875101  5.544085e-05 -5.007938e-05  2.703344e-03  1.292208e-03
+                       X1:X7 X2:(Intercept)         X2:X3         X2:X4         X2:X5
+X1:(Intercept) -7.070602e-01  -31.847739840 -7.037024e-03  6.176921e-03  2.276121e+00
+X1:X3          -6.439417e-04   -0.007037024 -2.109537e-05  1.939473e-05  1.317649e-04
+X1:X4           5.816686e-04    0.006176921  1.939473e-05 -1.940308e-05  1.133368e-05
+X1:X5          -3.139916e-02    2.276121463  1.317649e-04  1.133368e-05 -2.682596e-01
+X1:X6          -1.500891e-02    0.066018023 -6.953695e-05  6.112379e-05 -3.223883e-03
+X1:X7           1.316611e-02    0.060875101  5.544085e-05 -5.007938e-05  2.703344e-03
+X2:(Intercept)  6.087510e-02   25.117680985  5.549961e-03 -4.871615e-03 -1.795132e+00
+X2:X3           5.544085e-05    0.005549961  1.663750e-05 -1.529624e-05 -1.039203e-04
+X2:X4          -5.007938e-05   -0.004871615 -1.529624e-05  1.530283e-05 -8.938652e-06
+X2:X5           2.703344e-03   -1.795131871 -1.039203e-04 -8.938652e-06  2.115710e-01
+X2:X6           1.292208e-03   -0.052067106  5.484241e-05 -4.820712e-05  2.542612e-03
+X2:X7          -1.133550e-03   -0.048010985 -4.372510e-05  3.949661e-05 -2.132074e-03
+                       X2:X6         X2:X7
+X1:(Intercept)  6.601802e-02  6.087510e-02
+X1:X3          -6.953695e-05  5.544085e-05
+X1:X4           6.112379e-05 -5.007938e-05
+X1:X5          -3.223883e-03  2.703344e-03
+X1:X6          -5.106357e-03  1.292208e-03
+X1:X7           1.292208e-03 -1.133550e-03
+X2:(Intercept) -5.206711e-02 -4.801099e-02
+X2:X3           5.484241e-05 -4.372510e-05
+X2:X4          -4.820712e-05  3.949661e-05
+X2:X5           2.542612e-03 -2.132074e-03
+X2:X6           4.027282e-03 -1.019139e-03
+X2:X7          -1.019139e-03  8.940087e-04
+> 
+> 
+> # (e)
+> n <- nrow(data)
+> r <- 5
+> m <- 2
+> 
+> sig_h<- (t(epsilon_hat)%*% epsilon_hat)/(n)
+> 
+> aic_fullmodel<- n*log(det(sig_h)) - 2*(5+1)*m
+> 
+> bic_fullmodel<- n*log(det(sig_h))- (5+1)*m*log(n)
+> 
+> 
+> 
+> model_X1 <- lm(X1 ~ X3 + X4 + X5 + X6 + X7, data = data)
+> model_X2 <- lm(X2 ~ X3 + X4 + X5 + X6 + X7, data = data)
+> 
+> 
+> reduced_model_X1 <- stepAIC(model_X1, direction = "backward")
+Start:  AIC=229.11
+X1 ~ X3 + X4 + X5 + X6 + X7
+
+       Df Sum of Sq     RSS    AIC
+- X6    1      11.8  8187.6 227.17
+- X5    1     251.6  8427.4 228.35
+<none>               8175.8 229.11
+- X7    1     647.0  8822.8 230.23
+- X4    1    2480.8 10656.6 237.97
+- X3    1    5330.4 13506.1 247.69
+
+Step:  AIC=227.17
+X1 ~ X3 + X4 + X5 + X7
+
+       Df Sum of Sq     RSS    AIC
+- X5    1     244.1  8431.7 226.37
+<none>               8187.6 227.17
+- X7    1     782.1  8969.7 228.91
+- X4    1    2647.6 10835.2 236.66
+- X3    1    5692.8 13880.4 246.81
+
+Step:  AIC=226.37
+X1 ~ X3 + X4 + X7
+
+       Df Sum of Sq     RSS    AIC
+<none>               8431.7 226.37
+- X7    1     685.0  9116.6 227.58
+- X4    1    2628.4 11060.0 235.50
+- X3    1    5547.3 13979.0 245.10
+> reduced_model_X2 <- stepAIC(model_X2, direction = "backward")
+Start:  AIC=118.83
+X2 ~ X3 + X4 + X5 + X6 + X7
+
+       Df Sum of Sq     RSS    AIC
+<none>               555.15 118.83
+- X3    1     57.60  612.76 120.88
+- X4    1     59.99  615.14 121.04
+- X5    1     84.90  640.05 122.67
+- X7    1    651.75 1206.91 148.67
+- X6    1    788.00 1343.15 153.06
+> 
+> summary(reduced_model_X1)
+
+Call:
+lm(formula = X1 ~ X3 + X4 + X7, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-29.445  -8.452   0.258   8.302  49.834 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept)  6.96585   11.77691   0.591  0.55779    
+X3           0.07433    0.01507   4.934 1.73e-05 ***
+X4          -0.04939    0.01454  -3.396  0.00165 ** 
+X7           0.16436    0.09480   1.734  0.09129 .  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 15.1 on 37 degrees of freedom
+Multiple R-squared:  0.6174,	Adjusted R-squared:  0.5864 
+F-statistic:  19.9 on 3 and 37 DF,  p-value: 7.542e-08
+
+> summary(reduced_model_X2)
+
+Call:
+lm(formula = X2 ~ X3 + X4 + X5 + X6 + X7, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-4.5510 -2.7467 -0.9587  1.8206 11.7553 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 70.167305   5.011754  14.001 6.57e-16 ***
+X3          -0.007773   0.004079  -1.906   0.0649 .  
+X4           0.007607   0.003912   1.945   0.0599 .  
+X5          -1.064172   0.459969  -2.314   0.0267 *  
+X6           0.447298   0.063461   7.048 3.31e-08 ***
+X7          -0.191664   0.029900  -6.410 2.23e-07 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 3.983 on 35 degrees of freedom
+Multiple R-squared:  0.7343,	Adjusted R-squared:  0.6964 
+F-statistic: 19.35 on 5 and 35 DF,  p-value: 3.337e-09
+
+> 
+> reduced_model_X1_new <- lm(X1 ~ X3 + X4, data = data)
+> reduced_model_X2_new <- lm(X2 ~ X5 + X6 + X7, data = data)
+> 
+> summary(reduced_model_X1_new)
+
+Call:
+lm(formula = X1 ~ X3 + X4, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-22.389 -12.831  -1.277   7.609  49.533 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 26.32508    3.84044   6.855 3.87e-08 ***
+X3           0.08243    0.01470   5.609 1.96e-06 ***
+X4          -0.05661    0.01430  -3.959 0.000319 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 15.49 on 38 degrees of freedom
+Multiple R-squared:  0.5863,	Adjusted R-squared:  0.5645 
+F-statistic: 26.93 on 2 and 38 DF,  p-value: 5.207e-08
+
+> 
+> summary(reduced_model_X2_new)
+
+Call:
+lm(formula = X2 ~ X5 + X6 + X7, data = data)
+
+Residuals:
+   Min     1Q Median     3Q    Max 
+-7.482 -2.459 -1.026  1.782 11.373 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 72.67437    4.93508  14.726  < 2e-16 ***
+X5          -1.07387    0.46040  -2.332   0.0252 *  
+X6           0.47210    0.06348   7.437 7.48e-09 ***
+X7          -0.21183    0.02858  -7.413 8.05e-09 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 4.079 on 37 degrees of freedom
+Multiple R-squared:  0.7055,	Adjusted R-squared:  0.6816 
+F-statistic: 29.54 on 3 and 37 DF,  p-value: 6.35e-10
+
+> 
+> # (f)
+> ft1<- lm(X1 ~ X3 + X4, data = data)
+> 
+> par(mfrow = c(2, 2))
+> qqnorm(ft1$residuals)
+> qqline(ft1$residuals, col="red")
+> 
+> plot(data[c(3, 4), c("X3", "X4")], ft1$residuals)
+> abline(h=0, col="red")
+> 
+> plot(ft1$fitted.values, ft1$residuals)
+> abline(h=0, col="red")
+> 
+> plot(hatvalues(ft1), cooks.distance(ft1))
+> abline(v= 2*1/n, col="red")
+> abline(h= 4/n,col="red")
+> 
+> outliers_ft1 <- which(hatvalues(ft1) > 2*1/n & cooks.distance(ft1) > 4/n)
+> outliers_ft1
+31 
+31 
+> # Label outliers on the plot
+> text(hatvalues(ft1)[outliers_ft1], cooks.distance(ft1)[outliers_ft1], labels = rownames(data)[outliers_ft1], pos = 3)
+> 
+> ft2<- lm(X2 ~ X5 + X6 + X7, data = data)
+> par(mfrow = c(2, 2))
+> 
+> qqnorm(ft2$residuals)
+> qqline(ft2$residuals, col="red")
+> 
+> plot(data[c(5, 6, 7), c("X5", "X6", "X7")], ft2$residuals)
+> abline(h=0, col="red")
+> 
+> plot(ft2$fitted.values, ft2$residuals)
+> abline(h=0, col="red")
+> 
+> plot(hatvalues(ft2), cooks.distance(ft2))
+> abline(v= 2*1/n, col="red")
+> abline(h= 4/n,col="red")
+> 
+> 
+> outliers_ft2 <- which(hatvalues(ft2) > 2*1/n & cooks.distance(ft2) > 4/n)
+> outliers_ft2
+ 1  9 25 35 
+ 1  9 25 35 
+> # Label outliers on the plot
+> text(hatvalues(ft2)[outliers_ft2], cooks.distance(ft2)[outliers_ft2], labels = rownames(data)[outliers_ft2], pos = 3)
+> 
+> # (g)
+> # New data point
+> new_data_X1 <- data.frame(X3 = 600, X4 = 850)
+> 
+> # Predict with confidence intervals
+> predict(ft1, newdata = new_data_X1, interval = "confidence", level = 0.95)
+       fit      lwr     upr
+1 27.66993 21.75196 33.5879
+> 
+> 
+> new_data_X2 <- data.frame(X5 = 11, X6 = 32, X7 = 140)
+> 
+> # Predict with confidence intervals
+> predict(ft2, newdata = new_data_X2, interval = "confidence", level = 0.95)
+       fit      lwr      upr
+1 46.31268 43.80053 48.82482
